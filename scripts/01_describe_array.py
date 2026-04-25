@@ -1,11 +1,24 @@
+#!/usr/bin/env python3
+
 # simple script to describe the contents of the HDF5 file containing DNA methylation data
+# plus Task 1 EDA heatmaps for top variable CpGs
 
 import h5py
 import numpy as np
+import pandas as pd
+
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 path = Path("../data/temporal_two_sets_n2000.h5")
+
+OUT_DIR = Path("../results/task1")
+FIG_DIR = OUT_DIR / "figures"
+
+TOP_N_CPGS = 200
 
 
 def human_bytes(n_bytes):
@@ -112,13 +125,8 @@ def summarise_3d_array(ds):
     Extra summaries for arrays shaped like:
         n_features x n_channels x n_samples
 
-    Your arrays look like:
-        (2000, 2, 147)
-        (2000, 2, 43)
-        etc.
-
     This assumes axis 0 = CpGs/features,
-    axis 1 = channels/timepoints/groups,
+    axis 1 = channels/timepoints,
     axis 2 = samples/individuals.
     """
     if ds.ndim != 3:
@@ -128,10 +136,9 @@ def summarise_3d_array(ds):
 
     print("  3D axis summary:")
     print(f"    axis 0 length: {ds.shape[0]}  likely CpGs/features")
-    print(f"    axis 1 length: {ds.shape[1]}  likely paired values / channels")
+    print(f"    axis 1 length: {ds.shape[1]}  likely paired values / timepoints")
     print(f"    axis 2 length: {ds.shape[2]}  likely samples")
 
-    # Per-channel summary, useful because your middle axis is length 2.
     if ds.shape[1] == 2:
         print("  per-channel summary:")
         for channel in range(ds.shape[1]):
@@ -143,7 +150,6 @@ def summarise_3d_array(ds):
             print(f"      std:    {np.nanstd(xc):.6g}")
             print(f"      median: {np.nanmedian(xc):.6g}")
 
-        # Difference between channel 1 and channel 0.
         delta = x[:, 1, :] - x[:, 0, :]
         print("  channel delta summary, channel 1 - channel 0:")
         print(f"    min:    {np.nanmin(delta):.6g}")
@@ -152,7 +158,6 @@ def summarise_3d_array(ds):
         print(f"    std:    {np.nanstd(delta):.6g}")
         print(f"    median: {np.nanmedian(delta):.6g}")
 
-    # Per-CpG summary across channels and samples.
     per_feature_mean = np.nanmean(x, axis=(1, 2))
     per_feature_std = np.nanstd(x, axis=(1, 2))
 
@@ -207,6 +212,236 @@ def describe_dataset(name, ds):
         string_summary(ds)
 
 
+def load_task1_for_eda(path):
+    """
+    Load Task 1:
+        X_cn_to_cn  = y 0
+        X_cn_to_mci = y 1
+
+    Original shape:
+        features x time x samples
+
+    Returned shape:
+        samples x time x features
+    """
+    with h5py.File(path, "r") as f:
+        x_cn_to_cn = f["X_cn_to_cn"][:]
+        x_cn_to_mci = f["X_cn_to_mci"][:]
+        cpg_ids = f["cpg_ids_cn"][:]
+
+    x0 = np.transpose(x_cn_to_cn, (2, 1, 0))
+    x1 = np.transpose(x_cn_to_mci, (2, 1, 0))
+
+    X = np.concatenate([x0, x1], axis=0)
+    y = np.concatenate([
+        np.zeros(x0.shape[0], dtype=int),
+        np.ones(x1.shape[0], dtype=int),
+    ])
+
+    cpg_ids = np.asarray([decode_if_bytes(c) for c in cpg_ids])
+
+    return X, y, cpg_ids
+
+
+def get_top_variable_cpgs(X_2d, cpg_ids, top_n=200):
+    """
+    Select top CpGs by variance across subjects.
+
+    X_2d shape:
+        samples x CpGs
+    """
+    variances = np.nanvar(X_2d, axis=0)
+
+    top_idx = np.argsort(variances)[-top_n:][::-1]
+
+    top_df = pd.DataFrame({
+        "rank": np.arange(1, len(top_idx) + 1),
+        "feature_index": top_idx,
+        "cpg_id": cpg_ids[top_idx],
+        "variance": variances[top_idx],
+        "std": np.sqrt(variances[top_idx]),
+        "mean_beta": np.nanmean(X_2d[:, top_idx], axis=0),
+    })
+
+    return top_idx, top_df
+
+
+def save_cpg_correlation_clustermap(X_2d, cpg_ids, out_png, title):
+    """
+    Save clustered CpG-CpG correlation heatmap.
+
+    X_2d shape:
+        samples x selected CpGs
+    """
+    df = pd.DataFrame(X_2d, columns=cpg_ids)
+
+    corr = df.corr(method="pearson")
+
+    g = sns.clustermap(
+        corr,
+        cmap="vlag",
+        center=0,
+        vmin=-1,
+        vmax=1,
+        figsize=(14, 14),
+        xticklabels=False,
+        yticklabels=False,
+        dendrogram_ratio=(0.12, 0.12),
+        cbar_pos=(0.02, 0.82, 0.03, 0.12),
+    )
+
+    g.fig.suptitle(title, y=1.02)
+    g.fig.savefig(out_png, dpi=300, bbox_inches="tight")
+    plt.close(g.fig)
+
+
+def save_subject_clustermap(X_2d, y, cpg_ids, out_png, title):
+    """
+    Save clustered subject x CpG methylation heatmap.
+
+    Rows = subjects
+    Columns = selected CpGs
+    Values = beta values
+
+    Rows are coloured by class:
+        0 = CN -> CN
+        1 = CN -> MCI
+    """
+    df = pd.DataFrame(X_2d, columns=cpg_ids)
+
+    # Add readable row labels.
+    row_labels = [
+        f"sample_{i:03d}_CN_to_CN" if label == 0 else f"sample_{i:03d}_CN_to_MCI"
+        for i, label in enumerate(y)
+    ]
+    df.index = row_labels
+
+    # Simple row colours. Seaborn accepts colour names.
+    row_colors = pd.Series(y, index=df.index).map({
+        0: "lightgrey",
+        1: "firebrick",
+    })
+
+    g = sns.clustermap(
+        df,
+        cmap="viridis",
+        row_cluster=True,
+        col_cluster=True,
+        row_colors=row_colors,
+        figsize=(16, 12),
+        xticklabels=False,
+        yticklabels=False,
+        dendrogram_ratio=(0.10, 0.10),
+        cbar_pos=(0.02, 0.82, 0.03, 0.12),
+    )
+
+    g.fig.suptitle(title, y=1.02)
+
+    # Add a small legend for row colours.
+    for label, color in [
+        ("CN → CN, y=0", "lightgrey"),
+        ("CN → MCI, y=1", "firebrick"),
+    ]:
+        g.ax_col_dendrogram.bar(0, 0, color=color, label=label, linewidth=0)
+
+    g.ax_col_dendrogram.legend(
+        loc="center",
+        ncol=2,
+        bbox_to_anchor=(0.5, 1.15),
+        frameon=False,
+    )
+
+    g.fig.savefig(out_png, dpi=300, bbox_inches="tight")
+    plt.close(g.fig)
+
+
+def run_task1_eda_heatmaps():
+    """
+    Generate Task 1 clustered heatmaps for top variable CpGs.
+
+    Outputs:
+      - CSVs of top variable CpGs at t0 and t1
+      - clustered CpG-CpG correlation heatmaps
+      - clustered subject-CpG heatmaps
+    """
+    print("\n" + "=" * 80)
+    print("Task 1 EDA heatmaps")
+    print("=" * 80)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    X, y, cpg_ids = load_task1_for_eda(path)
+
+    print(f"Task 1 X shape: {X.shape}")
+    print("  axis 0 = subjects")
+    print("  axis 1 = presumed timepoints")
+    print("  axis 2 = CpGs")
+    print(f"Task 1 y counts [CN->CN, CN->MCI]: {np.bincount(y)}")
+
+    timepoint_data = {
+        "t0": X[:, 0, :],
+        "t1": X[:, 1, :],
+    }
+
+    for timepoint_name, X_tp in timepoint_data.items():
+        print("\n" + "-" * 80)
+        print(f"Processing {timepoint_name}")
+        print(f"Input matrix shape: {X_tp.shape}")
+
+        top_idx, top_df = get_top_variable_cpgs(
+            X_2d=X_tp,
+            cpg_ids=cpg_ids,
+            top_n=TOP_N_CPGS,
+        )
+
+        top_csv = OUT_DIR / f"task1_top{TOP_N_CPGS}_variable_cpgs_{timepoint_name}.csv"
+        top_df.to_csv(top_csv, index=False)
+
+        X_top = X_tp[:, top_idx]
+        cpg_top = cpg_ids[top_idx]
+
+        print(f"Selected top {TOP_N_CPGS} CpGs by variance.")
+        print(f"Top CpG table saved: {top_csv.resolve()}")
+        print(f"Highest variance CpG: {top_df.iloc[0]['cpg_id']} "
+              f"(variance={top_df.iloc[0]['variance']:.6g})")
+
+        corr_png = FIG_DIR / (
+            f"task1_{timepoint_name}_top{TOP_N_CPGS}_"
+            f"cpg_correlation_clustermap.png"
+        )
+
+        save_cpg_correlation_clustermap(
+            X_2d=X_top,
+            cpg_ids=cpg_top,
+            out_png=corr_png,
+            title=(
+                f"Task 1 {timepoint_name}: clustered CpG-CpG correlation "
+                f"heatmap, top {TOP_N_CPGS} variable CpGs"
+            ),
+        )
+
+        print(f"CpG correlation clustermap saved: {corr_png.resolve()}")
+
+        subject_png = FIG_DIR / (
+            f"task1_{timepoint_name}_top{TOP_N_CPGS}_"
+            f"subject_cpg_clustermap.png"
+        )
+
+        save_subject_clustermap(
+            X_2d=X_top,
+            y=y,
+            cpg_ids=cpg_top,
+            out_png=subject_png,
+            title=(
+                f"Task 1 {timepoint_name}: clustered subject × CpG heatmap, "
+                f"top {TOP_N_CPGS} variable CpGs"
+            ),
+        )
+
+        print(f"Subject × CpG clustermap saved: {subject_png.resolve()}")
+
+
 def main():
     if not path.exists():
         raise FileNotFoundError(f"Could not find file: {path.resolve()}")
@@ -232,6 +467,8 @@ def main():
                 describe_dataset(name, obj)
 
         f.visititems(describe)
+
+    run_task1_eda_heatmaps()
 
 
 if __name__ == "__main__":
