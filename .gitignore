@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Local data (do not commit)
+data/
+*.h5
+*.hdf5
+
+# Common local env/IDE artifacts
+.env
+.venv/
+venv/
+.idea/
+.vscode/
