@@ -166,21 +166,29 @@ def get_models():
     # Elastic-net can be slow here because:
     #   190 samples x 4000-6000 features x repeated CV x saga solver
     #
-    # You can uncomment this model later, but start with L2 first.
-    #
-    # models["logreg_elasticnet"] = Pipeline([
-    #     ("scaler", StandardScaler()),
-    #     ("clf", LogisticRegression(
-    #         penalty="elasticnet",
-    #         solver="saga",
-    #         l1_ratio=0.5,
-    #         C=0.1,
-    #         class_weight="balanced",
-    #         max_iter=5000,
-    #         tol=1e-3,
-    #         random_state=RANDOM_STATE,
-    #     )),
-    # ])
+    # We keep a *small* elastic-net grid here so it is reproducible and not too
+    # expensive, but still lets us test whether sparsity helps vs pure L2.
+    def make_elasticnet_logreg(*, C, l1_ratio):
+        return Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(
+                penalty="elasticnet",
+                solver="saga",
+                C=float(C),
+                l1_ratio=float(l1_ratio),
+                class_weight="balanced",
+                max_iter=10_000,
+                tol=1e-3,
+                n_jobs=-1,
+                random_state=RANDOM_STATE,
+            )),
+        ])
+
+    # Elastic-net logistic regression (small grid).
+    models["logreg_elasticnet_C0.1_l1r0.1"] = make_elasticnet_logreg(C=0.1, l1_ratio=0.1)
+    models["logreg_elasticnet_C0.1_l1r0.5"] = make_elasticnet_logreg(C=0.1, l1_ratio=0.5)
+    models["logreg_elasticnet_C0.1_l1r0.9"] = make_elasticnet_logreg(C=0.1, l1_ratio=0.9)
+    models["logreg_elasticnet_C1_l1r0.5"] = make_elasticnet_logreg(C=1.0, l1_ratio=0.5)
 
     # Tree models are not too bad, but can still be slow across repeated CV
     # and may overfit with many CpGs and few samples.
@@ -404,6 +412,29 @@ def get_experiments():
             "experiment": "logreg_l2_delta_only",
             "feature_set": "delta_only",
             "model": "logreg_l2",
+        },
+
+        # Elastic-net logistic regression on the strongest compact feature set.
+        # This is slower than liblinear L2 logistic regression.
+        {
+            "experiment": "logreg_elasticnet_C0.1_l1r0.1_t1_only",
+            "feature_set": "t1_only",
+            "model": "logreg_elasticnet_C0.1_l1r0.1",
+        },
+        {
+            "experiment": "logreg_elasticnet_C0.1_l1r0.5_t1_only",
+            "feature_set": "t1_only",
+            "model": "logreg_elasticnet_C0.1_l1r0.5",
+        },
+        {
+            "experiment": "logreg_elasticnet_C0.1_l1r0.9_t1_only",
+            "feature_set": "t1_only",
+            "model": "logreg_elasticnet_C0.1_l1r0.9",
+        },
+        {
+            "experiment": "logreg_elasticnet_C1_l1r0.5_t1_only",
+            "feature_set": "t1_only",
+            "model": "logreg_elasticnet_C1_l1r0.5",
         },
 
         # Combined feature representations.
