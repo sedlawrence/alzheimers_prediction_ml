@@ -1,0 +1,5 @@
+experiment,model_name,model_type,input_key,selection_metric,inner_selection_metric_mean,inner_selection_metric_std,selected_count,hidden_dims,dropout,lr,weight_decay,hidden_dim,bottleneck_dim
+bottleneck_mlp_t1_only_narrow,bottleneck_mlp_t1_only_narrow,bottleneck_mlp,t1_only,pr_auc,0.5862929086694557,0.08906478092549033,15,,0.4,0.001,0.001,64.0,16.0
+bottleneck_mlp_t1_only_wide,bottleneck_mlp_t1_only_wide,bottleneck_mlp,t1_only,pr_auc,0.6023657796953431,0.09849464060850806,15,,0.5,0.0003,0.0001,128.0,32.0
+mlp_t1_only_narrow,mlp_t1_only_narrow,mlp,t1_only,pr_auc,0.5956929455612188,0.10172185523664842,15,"(128, 32)",0.4,0.001,0.001,,
+mlp_t1_only_wide,mlp_t1_only_wide,mlp,t1_only,pr_auc,0.6068202908697695,0.09591882697711265,15,"(256, 64)",0.5,0.0003,0.0001,,

@@ -1,0 +1,5 @@
+experiment,model_name,model_type,input_key,hidden_dims,dropout,lr,weight_decay,hidden_dim,bottleneck_dim
+mlp_t1_only_wide,mlp_t1_only_wide,mlp,t1_only,"(256, 64)",0.5,0.0003,0.0001,,
+mlp_t1_only_narrow,mlp_t1_only_narrow,mlp,t1_only,"(128, 32)",0.4,0.001,0.001,,
+bottleneck_mlp_t1_only_wide,bottleneck_mlp_t1_only_wide,bottleneck_mlp,t1_only,,0.5,0.0003,0.0001,128.0,32.0
+bottleneck_mlp_t1_only_narrow,bottleneck_mlp_t1_only_narrow,bottleneck_mlp,t1_only,,0.4,0.001,0.001,64.0,16.0

@@ -1,0 +1,2 @@
+experiment,model_name,model_type,input_key,selection_metric,inner_selection_metric_mean,inner_selection_metric_std,selected_count,conv_channels,branch_dim,head_dim,pool_size,dropout,lr,weight_decay
+chromosome_cnn_narrow,chromosome_cnn_narrow,chromosome_cnn,t0_t1_genome_pair,pr_auc,0.3638446244538434,0.08732471634483914,15,"(16, 32)",16,64,1,0.5,0.001,0.001

@@ -1,0 +1,2 @@
+task,family,selection_metric,outer_splits,outer_repeats,inner_splits,candidate_count,n_samples,n_features,effective_n_features,device
+task1,tabular,pr_auc,5,3,2,4,190,2000,2000,mps

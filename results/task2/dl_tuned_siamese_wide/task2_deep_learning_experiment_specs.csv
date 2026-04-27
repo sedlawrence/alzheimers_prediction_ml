@@ -1,0 +1,2 @@
+preset,experiment,input_key,model_type,dropout,batch_size,max_epochs,patience,lr,weight_decay,val_size,hidden_dims,hidden_dim,bottleneck_dim,embed_dim,conv_channels
+tuned_small,siamese_mlp_t0_t1_wide,t0_t1_pair,siamese_mlp,0.4,,,,0.0003,0.0001,,,128,,32,
